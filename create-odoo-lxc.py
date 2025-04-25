@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# Script for Odoo 18.0 installation on Proxmox LXC with Ubuntu 24.04
+# Script para instalación de Odoo 18.0 en Proxmox LXC con Ubuntu 24.04
 import os, sys, json, subprocess, re, time, shutil, glob
 
-# Color configuration
+# Configuración de colores
 C = {
     'R': '\033[0;31m', 'G': '\033[0;32m', 'B': '\033[0;34m', 'Y': '\033[1;33m',
     'C': '\033[0;36m', 'P': '\033[0;35m', 'O': '\033[0;33m', 'N': '\033[0m', 'BOLD': '\033[1m'
 }
 
-# Utility functions
+# Funciones de utilidad
 def msg(text, type_='INFO', color='B'): print(f"{C[color]}[{type_}]{C['N']} {text}")
 def success(text): msg(text, 'SUCCESS', 'G')
 def warning(text): msg(text, 'WARNING', 'Y')
@@ -17,13 +17,13 @@ def error_exit(text): error(text); sys.exit(1)
 def section(title): print(f"\n{C['P']}{C['BOLD']}╔═════════════════════════════════════════════════════════════════╗{C['N']}\n{C['P']}{C['BOLD']}  {title}{C['N']}\n{C['P']}{C['BOLD']}╚═════════════════════════════════════════════════════════════════╝{C['N']}")
 def show_item(label, value=""): print(f"  {C['BOLD']}•{C['N']} {label} {C['C']}{value}{C['N']}")
 def show_group(title): print(f"{C['BOLD']}{title}:{C['N']}")
-def ask(prompt, default, validation=None, error_msg="Invalid value"):
+def ask(prompt, default, validation=None, error_msg="Valor inválido"):
     while True:
         user_input = input(f"{C['C']}{prompt} [{default}]: {C['N']}").strip() or default
         if validation is None or re.match(validation, user_input): return user_input
         warning(error_msg)
 def confirm_action(prompt, default): 
-    # Format options based on default (Y/n or y/N)
+    # Formato de opciones basado en el valor predeterminado (Y/n o y/N)
     options = "Y/n" if default.lower().startswith('y') else "y/N"
     return (input(f"{C['G']}{prompt} ({options}): {C['N']}").strip().lower() or default.lower()).startswith('y')
 def run_command(command, exit_on_error=True, show_output=False):
@@ -32,64 +32,64 @@ def run_command(command, exit_on_error=True, show_output=False):
         if show_output: print(result.stdout)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        if exit_on_error: error_exit(f"Error: {command}\nOutput: {e.stderr}")
+        if exit_on_error: error_exit(f"Error: {command}\nSalida: {e.stderr}")
         return None
 
-# Storage functions
+# Funciones de almacenamiento
 def get_storage_data():
     try:
         hostname = run_command("hostname")
         storage_json = run_command(f"pvesh get /nodes/{hostname}/storage --output-format=json")
         return json.loads(storage_json)
-    except Exception as e: error_exit(f"Error getting storage data: {str(e)}")
+    except Exception as e: error_exit(f"Error al obtener datos de almacenamiento: {str(e)}")
 
 def enable_storage_content(storage, content_type, readable_name, storage_data):
     storage_info = next((item for item in storage_data if item['storage'] == storage), None)
-    if not storage_info: error_exit(f"Storage '{storage}' not found")
+    if not storage_info: error_exit(f"Almacenamiento '{storage}' no encontrado")
 
     content = storage_info.get('content', '')
     content_list = content.split(',') if content else []
 
     if content_type not in content_list:
-        warning(f"Storage '{storage}' does not support {readable_name} ({content_type})")
-        if confirm_action(f"Enable {readable_name} support?", "Y"):
+        warning(f"El almacenamiento '{storage}' no soporta {readable_name} ({content_type})")
+        if confirm_action(f"¿Habilitar soporte para {readable_name}?", "Y"):
             new_content = f"{content},{content_type}" if content else content_type
             run_command(f"pvesh set /storage/{storage} --content '{new_content}'")
-            success(f"{readable_name} support enabled for '{storage}'")
+            success(f"Soporte para {readable_name} habilitado en '{storage}'")
             return get_storage_data()
-        else: error_exit(f"{readable_name} support is required")
+        else: error_exit(f"Se requiere soporte para {readable_name}")
     else:
-        msg(f"Storage '{storage}' already supports {readable_name}")
+        msg(f"El almacenamiento '{storage}' ya soporta {readable_name}")
         return storage_data
 
 def show_storages(storage_data, storages):
-    section("AVAILABLE STORAGE")
+    section("ALMACENAMIENTO DISPONIBLE")
     for index, name in enumerate(storages, 1):
         info = next((item for item in storage_data if item['storage'] == name), {})
         content = info.get('content', '')
         avail, total, used = info.get('avail', 'N/A'), info.get('total', 'N/A'), info.get('used', 'N/A')
-        rootdir_support = "YES" if "rootdir" in content else "NO"
-        vztmpl_support = "YES" if "vztmpl" in content else "NO"
+        rootdir_support = "SÍ" if "rootdir" in content else "NO"
+        vztmpl_support = "SÍ" if "vztmpl" in content else "NO"
 
         format_size = lambda size: f"{size/1024/1024/1024:.2f} GB" if isinstance(size, (int, float)) else "N/A"
         avail_display, total_display, used_display = format_size(avail), format_size(total), format_size(used)
         used_percent = f"{used*100/total:.2f}%" if isinstance(used, (int, float)) and isinstance(total, (int, float)) and total > 0 else "N/A"
 
         print(f"  {C['BOLD']}{index}) {name}{C['N']}")
-        show_item("Total space", total_display)
-        show_item("Used space", f"{used_display} ({used_percent})")
-        show_item("Available space", avail_display)
-        show_item("Container compatible", rootdir_support)
-        show_item("Template compatible", vztmpl_support)
+        show_item("Espacio total", total_display)
+        show_item("Espacio usado", f"{used_display} ({used_percent})")
+        show_item("Espacio disponible", avail_display)
+        show_item("Compatible con contenedores", rootdir_support)
+        show_item("Compatible con plantillas", vztmpl_support)
         print("")
 
-# Check for custom modules
+# Comprobar módulos personalizados
 def check_custom_modules():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     modules_dir = os.path.join(script_dir, "modules")
     
     if not os.path.exists(modules_dir):
-        msg("No 'modules' directory found")
+        msg("No se encontró el directorio 'modules'")
         return [], modules_dir
     
     modules = []
@@ -100,7 +100,7 @@ def check_custom_modules():
     
     return modules, modules_dir
 
-# Create Odoo installation script
+# Crear script de instalación de Odoo
 def create_odoo_install_script(odoo_version, db_pass, odoo_user, custom_modules):
     has_custom_modules = len(custom_modules) > 0
     custom_modules_str = ', '.join([f'"{m}"' for m in custom_modules])
@@ -108,98 +108,98 @@ def create_odoo_install_script(odoo_version, db_pass, odoo_user, custom_modules)
     addons_path = f'/opt/odoo18/addons,/opt/odoo18/custom_addons' if has_custom_modules else f'/opt/odoo18/addons'
 
     script_content = f'''#!/bin/bash
-# Odoo {odoo_version} installation script
+# Script de instalación de Odoo {odoo_version} - C3i Servicios Informáticos
 info() {{ echo "[INFO] $1"; }}
 success() {{ echo "[SUCCESS] $1"; }}
 warning() {{ echo "[WARNING] $1"; }}
 error() {{ echo "[ERROR] $1"; }}
 progress() {{ echo "[PROGRESS] $1"; }}
 
-# Update system
-info "Updating system..."
+# Actualizar sistema
+info "Actualizando sistema..."
 apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-success "System updated"
+success "Sistema actualizado"
 
-# Install requirements
-info "Installing dependencies..."
-progress "Installing system packages (1/5)"
+# Instalar requisitos
+info "Instalando dependencias..."
+progress "Instalando paquetes del sistema (1/5)"
 apt-get install -y openssh-server fail2ban python3-pip python3-dev libxml2-dev libxslt1-dev zlib1g-dev libsasl2-dev
-progress "Installing development libraries (2/5)"
+progress "Instalando bibliotecas de desarrollo (2/5)"
 apt-get install -y libldap2-dev build-essential libssl-dev libffi-dev default-libmysqlclient-dev libjpeg-dev libpq-dev
-progress "Installing image processing libraries (3/5)"
+progress "Instalando bibliotecas de procesamiento de imágenes (3/5)"
 apt-get install -y libjpeg8-dev liblcms2-dev libblas-dev libatlas-base-dev
-progress "Installing Node.js and npm (4/5)"
+progress "Instalando Node.js y npm (4/5)"
 apt-get install -y npm git postgresql python3-venv
-progress "Setting up fail2ban and Node.js (5/5)"
+progress "Configurando fail2ban y Node.js (5/5)"
 systemctl enable fail2ban
 ln -sf /usr/bin/nodejs /usr/bin/node
 npm install -g less less-plugin-clean-css
 apt-get install -y node-less
-success "Dependencies installed"
+success "Dependencias instaladas"
 
-# Configure PostgreSQL
-info "Configuring PostgreSQL..."
+# Configurar PostgreSQL
+info "Configurando PostgreSQL..."
 su - postgres -c "createuser --createdb --username postgres --no-createrole --superuser --pwprompt {odoo_user} << EOF
 {db_pass}
 {db_pass}
 EOF"
-success "PostgreSQL configured"
+success "PostgreSQL configurado"
 
-# Create Odoo user
-info "Creating system user for Odoo..."
+# Crear usuario de Odoo
+info "Creando usuario del sistema para Odoo..."
 adduser --system --home=/opt/odoo18 --group {odoo_user}
-success "System user created"
+success "Usuario del sistema creado"
 
-# Clone Odoo
-info "Cloning Odoo repository..."
-progress "Downloading Odoo source code (this may take several minutes)..."
+# Clonar Odoo
+info "Clonando repositorio de Odoo..."
+progress "Descargando código fuente de Odoo (esto puede tardar varios minutos)..."
 su - {odoo_user} -s /bin/bash -c "git clone https://www.github.com/odoo/odoo --depth 1 --branch {odoo_version} --single-branch ."
-success "Odoo repository cloned"
+success "Repositorio de Odoo clonado"
 
-# Install Python dependencies
-info "Installing Python dependencies..."
+# Instalar dependencias de Python
+info "Instalando dependencias de Python..."
 python3 -m venv /opt/odoo18/venv
 cd /opt/odoo18/
-progress "Installing Python requirements in virtual environment (this may take several minutes)..."
+progress "Instalando requisitos de Python en entorno virtual (esto puede tardar varios minutos)..."
 /opt/odoo18/venv/bin/pip install wheel
 /opt/odoo18/venv/bin/pip install -r requirements.txt
-success "Python dependencies installed"
+success "Dependencias de Python instaladas"
 
-# Install wkhtmltopdf
-info "Installing wkhtmltopdf..."
+# Instalar wkhtmltopdf
+info "Instalando wkhtmltopdf..."
 apt-get install -y xfonts-75dpi xfonts-base
 cd /tmp
-progress "Downloading wkhtmltopdf..."
+progress "Descargando wkhtmltopdf..."
 wget -q https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
-progress "Installing wkhtmltopdf package..."
+progress "Instalando paquete wkhtmltopdf..."
 dpkg -i wkhtmltox_0.12.6.1-2.jammy_amd64.deb || apt-get install -f -y
-success "wkhtmltopdf installed"
+success "wkhtmltopdf instalado"
 
 '''+\
 (f'''
-# Install custom modules
-info "Installing custom modules..."
+# Instalar módulos personalizados
+info "Instalando módulos personalizados..."
 mkdir -p /opt/odoo18/custom_addons
 chown {odoo_user}: /opt/odoo18/custom_addons
 
-# Copy custom modules to Odoo
+# Copiar módulos personalizados a Odoo
 for module in {custom_modules_str}; do
-    progress "Installing module: $module"
+    progress "Instalando módulo: $module"
     cp -r /tmp/custom_modules/$module /opt/odoo18/custom_addons/
 done
 
 chown -R {odoo_user}: /opt/odoo18/custom_addons/
-success "Custom modules installed"
+success "Módulos personalizados instalados"
 ''' if has_custom_modules else '')+\
 f'''
 
-# Configure Odoo
-info "Configuring Odoo..."
+# Configurar Odoo
+info "Configurando Odoo..."
 mkdir -p /var/log/odoo
-progress "Creating configuration file..."
+progress "Creando archivo de configuración..."
 cat > /etc/odoo18.conf << EOL
 [options]
-; This is the password that allows database operations:
+; Esta es la contraseña que permite operaciones en la base de datos:
 ; admin_passwd = admin
 db_host = localhost
 db_port = 5432
@@ -213,9 +213,9 @@ EOL
 chown {odoo_user}: /etc/odoo18.conf
 chmod 640 /etc/odoo18.conf
 chown {odoo_user}:root /var/log/odoo
-progress "Creating systemd service..."
+progress "Creando servicio systemd..."
 
-# Configure systemd
+# Configurar systemd
 cat > /etc/systemd/system/odoo18.service << EOL
 [Unit]
 Description=Odoo {odoo_version}
@@ -231,86 +231,87 @@ WantedBy=default.target
 EOL
 
 chmod 755 /etc/systemd/system/odoo18.service
-progress "Reloading systemd and starting Odoo service..."
+progress "Recargando systemd e iniciando servicio de Odoo..."
 systemctl daemon-reload
 systemctl start odoo18.service
 systemctl enable odoo18.service
 
-success "Odoo {odoo_version} installation completed"
+success "Instalación de Odoo {odoo_version} completada"
 '''
     with open('/tmp/odoo_install.sh', 'w') as f:
         f.write(script_content)
 
-# Main
+# Principal
 def main():
-    # Welcome screen
+    # Pantalla de bienvenida
     os.system('clear')
     print(f"{C['Y']}╔═════════════════════════════════════════════════════════════════╗{C['N']}")
-    print(f"{C['Y']}║            AUTOMATED ODOO INSTALLER FOR PROXMOX LXC             ║{C['N']}")
+    print(f"{C['Y']}║                   C3i SERVICIOS INFORMÁTICOS                    ║{C['N']}")
+    print(f"{C['Y']}║        INSTALADOR AUTOMATIZADO DE ODOO PARA PROXMOX LXC         ║{C['N']}")
     print(f"{C['Y']}╚═════════════════════════════════════════════════════════════════╝{C['N']}\n")
-    print(f"{C['C']}This script will install Odoo 18.0 on a Proxmox LXC with Ubuntu 24.04{C['N']}\n")
+    print(f"{C['C']}Este script instalará Odoo 18.0 en un Proxmox LXC con Ubuntu 24.04{C['N']}\n")
 
-    if not confirm_action("Continue with installation?", "Y"):
-        print(f"{C['Y']}Installation canceled.{C['N']}"); sys.exit(0)
+    if not confirm_action("¿Continuar con la instalación?", "Y"):
+        print(f"{C['Y']}Instalación cancelada.{C['N']}"); sys.exit(0)
     os.system('clear')
 
-    # Check requirements
-    section("REQUIREMENTS CHECK")
-    if os.geteuid() != 0: error_exit("Please run as root")
+    # Verificar requisitos
+    section("VERIFICACIÓN DE REQUISITOS")
+    if os.geteuid() != 0: error_exit("Por favor, ejecute como root")
 
-    # Check dependencies
-    msg("Checking dependencies...")
+    # Verificar dependencias
+    msg("Verificando dependencias...")
     missing_deps = [cmd for cmd in ['pvesh', 'pct', 'curl'] if shutil.which(cmd) is None]
     if missing_deps:
-        warning(f"Missing: {', '.join(missing_deps)}")
-        if confirm_action("Install missing dependencies?", "Y"):
+        warning(f"Faltantes: {', '.join(missing_deps)}")
+        if confirm_action("¿Instalar dependencias faltantes?", "Y"):
             run_command(f"apt update && apt install -y {' '.join(missing_deps)}")
-        else: error_exit("Dependencies required")
+        else: error_exit("Dependencias requeridas")
 
-    # Check custom modules
-    section("CUSTOM MODULES CHECK")
+    # Verificar módulos personalizados
+    section("VERIFICACIÓN DE MÓDULOS PERSONALIZADOS")
     custom_modules, modules_dir = check_custom_modules()
     if custom_modules:
-        success(f"Found {len(custom_modules)} custom modules: {', '.join(custom_modules)}")
+        success(f"Se encontraron {len(custom_modules)} módulos personalizados: {', '.join(custom_modules)}")
     else:
-        warning("No custom modules found in the 'modules' directory")
-        if confirm_action("Continue without custom modules?", "Y"):
+        warning("No se encontraron módulos personalizados en el directorio 'modules'")
+        if confirm_action("¿Continuar sin módulos personalizados?", "Y"):
             pass
         else:
-            error_exit("Custom modules are required for this installation")
+            error_exit("Se requieren módulos personalizados para esta instalación")
 
-    # Get storage info
-    msg("Getting available storage...")
+    # Obtener información de almacenamiento
+    msg("Obteniendo almacenamiento disponible...")
     storage_data = get_storage_data()
     storages = [item['storage'] for item in storage_data]
-    if not storages: error_exit("No storage available")
+    if not storages: error_exit("No hay almacenamiento disponible")
 
     show_storages(storage_data, storages)
-    storage_num = int(ask("Select storage (number)", "1", r"^[0-9]+$"))
-    if storage_num < 1 or storage_num > len(storages): error_exit("Invalid selection")
+    storage_num = int(ask("Seleccione almacenamiento (número)", "1", r"^[0-9]+$"))
+    if storage_num < 1 or storage_num > len(storages): error_exit("Selección inválida")
     storage = storages[storage_num - 1]
-    success(f"Selected storage: {storage}")
+    success(f"Almacenamiento seleccionado: {storage}")
 
-    # Verify storage support
-    storage_data = enable_storage_content(storage, "rootdir", "containers", storage_data)
-    storage_data = enable_storage_content(storage, "vztmpl", "templates", storage_data)
+    # Verificar soporte de almacenamiento
+    storage_data = enable_storage_content(storage, "rootdir", "contenedores", storage_data)
+    storage_data = enable_storage_content(storage, "vztmpl", "plantillas", storage_data)
 
-    # Container config
-    section("CONTAINER CONFIGURATION")
+    # Configuración del contenedor
+    section("CONFIGURACIÓN DEL CONTENEDOR")
     config = {
-        'vm_id': ask("Container ID (100-999)", "100", r"^[1-9][0-9]{2}$"),
-        'hostname': ask("Container hostname", "odoo-server", r"^[a-zA-Z0-9][-a-zA-Z0-9]*$"),
-        'password': ask("Container root password", "Cambiame123", r"."),
-        'memory': ask("RAM (MB, min 2048)", "4096", r"^[0-9]+$"),
-        'disk': ask("Disk (GB, min 10)", "20", r"^[0-9]+$"),
-        'cores': ask("CPU cores", "2", r"^[0-9]+$"),
+        'vm_id': ask("ID del contenedor (100-999)", "100", r"^[1-9][0-9]{2}$"),
+        'hostname': ask("Nombre de host del contenedor", "odoo-server", r"^[a-zA-Z0-9][-a-zA-Z0-9]*$"),
+        'password': ask("Contraseña de root del contenedor", "Cambiame123", r"."),
+        'memory': ask("RAM (MB, mín 2048)", "4096", r"^[0-9]+$"),
+        'disk': ask("Disco (GB, mín 10)", "20", r"^[0-9]+$"),
+        'cores': ask("Núcleos de CPU", "2", r"^[0-9]+$"),
     }
 
-    # Network config
-    section("NETWORK CONFIGURATION")
-    use_public_ip = confirm_action("Use public IP?", "N")
+    # Configuración de red
+    section("CONFIGURACIÓN DE RED")
+    use_public_ip = confirm_action("¿Usar IP pública?", "N")
 
-    # Get default network config
+    # Obtener configuración de red predeterminada
     try:
         default_gateway = ""
         default_interface = run_command("ip route | grep default | awk '{print $5}'", exit_on_error=False)
@@ -328,75 +329,75 @@ def main():
 
     if use_public_ip:
         config.update({
-            'ip_address': ask("Public IP address", "", r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
+            'ip_address': ask("Dirección IP pública", "", r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
             'netmask': "32",
-            'gateway': ask("Gateway", default_gateway, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
-            'dns_servers': ask("DNS servers (comma separated)", "9.9.9.9,1.1.1.1"),
+            'gateway': ask("Puerta de enlace", default_gateway, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
+            'dns_servers': ask("Servidores DNS (separados por coma)", "9.9.9.9,1.1.1.1"),
             'public_ip': True
         })
 
-        # MAC address for public IP
+        # Dirección MAC para IP pública
         while True:
-            mac = ask("MAC address for public IP", "", None)
+            mac = ask("Dirección MAC para IP pública", "", None)
             if mac and re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', mac):
                 config['mac_address'] = mac
                 break
-            else: error("Valid MAC address required for public IP")
+            else: error("Se requiere una dirección MAC válida para IP pública")
     else:
         config.update({
-            'ip_address': ask("Local IP address", default_suggested_ip, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
-            'netmask': ask("Network mask (CIDR)", default_mask, r"^[0-9]+$"),
-            'gateway': ask("Gateway", default_gateway, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
-            'dns_servers': ask("DNS servers", "9.9.9.9,1.1.1.1"),
+            'ip_address': ask("Dirección IP local", default_suggested_ip, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
+            'netmask': ask("Máscara de red (CIDR)", default_mask, r"^[0-9]+$"),
+            'gateway': ask("Puerta de enlace", default_gateway, r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
+            'dns_servers': ask("Servidores DNS", "9.9.9.9,1.1.1.1"),
             'public_ip': False,
             'mac_address': None
         })
 
-    # Odoo config
-    section("ODOO CONFIGURATION")
+    # Configuración de Odoo
+    section("CONFIGURACIÓN DE ODOO")
     config.update({
         'odoo_version': "18.0",
-        'odoo_user': ask("Odoo database user", "odoo18", r"^[a-z][a-z0-9_-]*$"),
-        'db_password': ask("Odoo DB password", "admin2025", r"."),
+        'odoo_user': ask("Usuario de base de datos de Odoo", "odoo18", r"^[a-z][a-z0-9_-]*$"),
+        'db_password': ask("Contraseña de BD de Odoo", "admin2025", r"."),
     })
 
-    # Summary
-    section("CONFIGURATION SUMMARY")
-    show_group("Container Info")
+    # Resumen
+    section("RESUMEN DE CONFIGURACIÓN")
+    show_group("Información del Contenedor")
     show_item("ID", config['vm_id'])
-    show_item("Hostname", config['hostname'])
+    show_item("Nombre de host", config['hostname'])
     show_item("RAM", f"{config['memory']} MB")
-    show_item("Disk", f"{config['disk']} GB")
-    show_item("Cores", config['cores'])
+    show_item("Disco", f"{config['disk']} GB")
+    show_item("Núcleos", config['cores'])
     print("")
 
-    show_group("Network Config")
+    show_group("Configuración de Red")
     if config['public_ip']:
-        show_item("Public IP", f"{config['ip_address']}/32")
-        show_item("MAC Address", config['mac_address'])
+        show_item("IP Pública", f"{config['ip_address']}/32")
+        show_item("Dirección MAC", config['mac_address'])
     else:
-        show_item("Local IP", f"{config['ip_address']}/{config['netmask']}")
-    show_item("Gateway", config['gateway'])
+        show_item("IP Local", f"{config['ip_address']}/{config['netmask']}")
+    show_item("Puerta de enlace", config['gateway'])
     show_item("DNS", config['dns_servers'])
     print("")
 
-    show_group("Odoo Config")
-    show_item("Version", config['odoo_version'])
-    show_item("User", config['odoo_user'])
-    show_item("DB password", config['db_password'])
+    show_group("Configuración de Odoo")
+    show_item("Versión", config['odoo_version'])
+    show_item("Usuario", config['odoo_user'])
+    show_item("Contraseña de BD", config['db_password'])
     
     if custom_modules:
         print("")
-        show_group("Custom Modules")
+        show_group("Módulos Personalizados")
         for module in custom_modules:
-            show_item("Module", module)
+            show_item("Módulo", module)
 
-    if not confirm_action("\nContinue with installation?", "Y"):
-        msg("Installation canceled"); sys.exit(0)
+    if not confirm_action("\n¿Continuar con la instalación?", "Y"):
+        msg("Instalación cancelada"); sys.exit(0)
 
-    # Create container
-    section("CONTAINER CREATION")
-    msg("Creating LXC container...")
+    # Crear contenedor
+    section("CREACIÓN DEL CONTENEDOR")
+    msg("Creando contenedor LXC...")
     template = "ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 
     hostname_cmd = run_command("hostname")
@@ -406,11 +407,11 @@ def main():
     template_exists = any(item.get('volid', '').endswith(template) for item in template_content)
 
     if not template_exists:
-        msg("Downloading Ubuntu 24.04 template...")
+        msg("Descargando plantilla de Ubuntu 24.04...")
         run_command("pveam update")
         run_command(f"pveam download {storage} {template}")
 
-    # Create container command
+    # Comando para crear contenedor
     create_cmd = (
         f"pct create {config['vm_id']} {storage}:vztmpl/{template} "
         f"-hostname {config['hostname']} "
@@ -421,7 +422,7 @@ def main():
         f"-cores {config['cores']} "
     )
 
-    # Network config
+    # Configuración de red
     if config['public_ip']:
         create_cmd += f"-net0 name=eth0,bridge=vmbr0,ip={config['ip_address']}/{config['netmask']},gw={config['gateway']},hwaddr={config['mac_address']} "
     else:
@@ -430,12 +431,12 @@ def main():
     create_cmd += f"-onboot 1 -start 1 -unprivileged 1 -features nesting=1 -nameserver '{config['dns_servers']}'"
 
     run_command(create_cmd)
-    success("Container created")
+    success("Contenedor creado")
 
-    # Configure for public IP /32
+    # Configurar para IP pública /32
     if config['public_ip']:
-        msg("Configuring routes for public IP...")
-        netplan_config = f"""# Network config for public IP
+        msg("Configurando rutas para IP pública...")
+        netplan_config = f"""# Configuración de red para IP pública
 network:
   ethernets:
     eth0:
@@ -458,8 +459,8 @@ network:
         run_command(f"pct exec {config['vm_id']} -- netplan apply")
         run_command("rm /tmp/01-netcfg.yaml")
 
-    # Wait for container to start
-    msg("Waiting for container to start...")
+    # Esperar a que el contenedor se inicie
+    msg("Esperando a que el contenedor se inicie...")
     network_check_shown = False
 
     for attempt in range(30):
@@ -472,7 +473,7 @@ network:
 
             if status == "running":
                 if not network_check_shown:
-                    msg("Container is running, checking network connectivity...")
+                    msg("El contenedor está en ejecución, verificando conectividad de red...")
                     network_check_shown = True
 
                 ping_result = run_command(f"pct exec {config['vm_id']} -- ping -c 1 8.8.8.8", exit_on_error=False)
@@ -483,47 +484,47 @@ network:
     print("")
 
     if attempt >= 29:
-        warning("Network connectivity might be limited. Continuing anyway...")
+        warning("La conectividad de red podría ser limitada. Continuando de todos modos...")
 
-    success("Network OK, container started")
+    success("Red OK, contenedor iniciado")
 
-    # Copy custom modules to container if available
+    # Copiar módulos personalizados al contenedor si están disponibles
     if custom_modules:
-        section("CUSTOM MODULES SETUP")
-        msg("Copying custom modules to container...")
+        section("CONFIGURACIÓN DE MÓDULOS PERSONALIZADOS")
+        msg("Copiando módulos personalizados al contenedor...")
         
-        # Create a temporary directory in the container
+        # Crear un directorio temporal en el contenedor
         run_command(f"pct exec {config['vm_id']} -- mkdir -p /tmp/custom_modules")
         
-        # Copy each module to the container
+        # Copiar cada módulo al contenedor
         for module in custom_modules:
             module_path = os.path.join(modules_dir, module)
             tmp_tar = f"/tmp/{module}.tar.gz"
             
-            # Create a tar archive of the module
+            # Crear un archivo tar del módulo
             run_command(f"tar -czf {tmp_tar} -C {modules_dir} {module}")
             
-            # Copy the tar to the container
+            # Copiar el tar al contenedor
             run_command(f"pct push {config['vm_id']} {tmp_tar} /tmp/{module}.tar.gz")
             
-            # Extract in the container
+            # Extraer en el contenedor
             run_command(f"pct exec {config['vm_id']} -- tar -xzf /tmp/{module}.tar.gz -C /tmp/custom_modules")
             
-            # Clean up
+            # Limpiar
             run_command(f"rm {tmp_tar}")
             run_command(f"pct exec {config['vm_id']} -- rm /tmp/{module}.tar.gz")
             
-            success(f"Module '{module}' transferred to container")
+            success(f"Módulo '{module}' transferido al contenedor")
 
-    # Install Odoo
-    section("ODOO INSTALLATION")
-    msg(f"Installing Odoo {config['odoo_version']}...")
+    # Instalar Odoo
+    section("INSTALACIÓN DE ODOO")
+    msg(f"Instalando Odoo {config['odoo_version']}...")
     create_odoo_install_script(config['odoo_version'], config['db_password'], config['odoo_user'], custom_modules)
     run_command(f"pct push {config['vm_id']} /tmp/odoo_install.sh /root/odoo_install.sh")
     run_command(f"pct exec {config['vm_id']} -- chmod +x /root/odoo_install.sh")
 
-    # Execute the installation script with real-time output
-    msg("Starting Odoo installation (this may take a while)...")
+    # Ejecutar el script de instalación con salida en tiempo real
+    msg("Iniciando instalación de Odoo (esto puede tardar un tiempo)...")
 
     try:
         process = subprocess.Popen(
@@ -536,7 +537,7 @@ network:
             universal_newlines=True
         )
 
-        # Process and display the output in real-time
+        # Procesar y mostrar la salida en tiempo real
         for line in process.stdout:
             line = line.strip()
             if "[INFO]" in line:
@@ -556,42 +557,43 @@ network:
         return_code = process.wait()
 
         if return_code != 0:
-            warning(f"Installation process exited with code {return_code}")
+            warning(f"El proceso de instalación finalizó con código {return_code}")
         else:
-            success("Odoo installation completed successfully")
+            success("Instalación de Odoo completada con éxito")
 
     except Exception as e:
-        error(f"Error during installation: {str(e)}")
+        error(f"Error durante la instalación: {str(e)}")
 
     run_command("rm /tmp/odoo_install.sh")
 
-    # Show final info
-    section("INSTALLATION COMPLETED")
+    # Mostrar información final
+    section("INSTALACIÓN COMPLETADA")
     print(f"{C['O']}╔═════════════════════════════════════════════════════════════════╗{C['N']}")
-    print(f"{C['O']}║                    ODOO INSTALLATION COMPLETED                  ║{C['N']}")
+    print(f"{C['O']}║                   C3i SERVICIOS INFORMÁTICOS                    ║{C['N']}")
+    print(f"{C['O']}║                 INSTALACIÓN DE ODOO COMPLETADA                  ║{C['N']}")
     print(f"{C['O']}╚═════════════════════════════════════════════════════════════════╝{C['N']}")
 
-    show_group("Odoo access information")
+    show_group("Información de acceso a Odoo")
     show_item("URL", f"http://{config['ip_address']}:8069")
-    show_item("Database user", config['odoo_user'])
-    show_item("Database password", config['db_password'])
+    show_item("Usuario de base de datos", config['odoo_user'])
+    show_item("Contraseña de base de datos", config['db_password'])
     print("")
 
-    show_group("Container access")
-    show_item("SSH Command", f"ssh root@{config['ip_address']}")
-    show_item("SSH Password", config['password'])
-    show_item("From Proxmox", f"pct enter {config['vm_id']}")
+    show_group("Acceso al contenedor")
+    show_item("Comando SSH", f"ssh root@{config['ip_address']}")
+    show_item("Contraseña SSH", config['password'])
+    show_item("Desde Proxmox", f"pct enter {config['vm_id']}")
     
     if custom_modules:
         print("")
-        show_group("Custom modules")
+        show_group("Módulos personalizados")
         for module in custom_modules:
-            show_item("Module installed", module)
+            show_item("Módulo instalado", module)
         
-        print(f"\n{C['Y']}NOTE: Custom modules will be available after creating the database.{C['N']}")
-        print(f"{C['Y']}      You'll need to activate them from the Apps menu in Odoo.{C['N']}")
+        print(f"\n{C['Y']}NOTA: Los módulos personalizados estarán disponibles después de crear la base de datos.{C['N']}")
+        print(f"{C['Y']}      Deberá activarlos desde el menú de Aplicaciones en Odoo.{C['N']}")
         
-    print(f"\n{C['Y']}NOTE: Wait a few minutes for Odoo to fully initialize.{C['N']}\n")
+    print(f"\n{C['Y']}NOTA: Espere unos minutos para que Odoo se inicialice completamente.{C['N']}\n")
 
 if __name__ == "__main__":
     main()
